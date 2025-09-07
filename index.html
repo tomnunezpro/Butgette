@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Budget – Courses & Fixe</title>
+
+  <!-- Tailwind pour aller vite -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Manifest + PWA (facultatif si déjà en place) -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0f172a">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <style>
+    :root{
+      --bg:#0b1020; --bg2:#0a1430;
+      --panel:rgba(16,24,48,.68);
+      --line:#223158; --muted:#9fb0d3;
+    }
+    html,body{ height:100% }
+    body{
+      margin:0;
+      background:
+        radial-gradient(1200px 600px at 20% -10%, #1a2245 0%, #0b1020 40%, #0b1020 100%) fixed,
+        radial-gradient(900px 480px at 90% 10%, rgba(76,119,255,.15), transparent 60%) fixed;
+      color:#e6ecff;
+    }
+    .app-wrap{ background:transparent }
+
+    /* motif vagues discret */
+    .waves{
+      background-image:
+        radial-gradient(transparent 28px, rgba(255,255,255,.03) 30px, transparent 31px),
+        radial-gradient(transparent 28px, rgba(255,255,255,.025) 30px, transparent 31px);
+      background-size: 48px 48px, 48px 48px;
+      background-position: 0 0, 24px 24px;
+    }
+
+    /* cartes “glass” */
+    .card{
+      background: var(--panel);
+      border:1px solid #29417b;
+      border-radius:16px;
+      backdrop-filter: saturate(140%) blur(6px);
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    .kpi{ background: rgba(26,38,78,.65); border:1px solid #314a8d; border-radius:14px; padding:.9rem; }
+    .kpi .val{ font-size:1.15rem; font-weight:800 }
+    .muted{ color:var(--muted) }
+
+    .btn{ background:#263a74; border:1px solid #3550a3; color:#dbe7ff; border-radius:12px; padding:.55rem .9rem; }
+    .btn:hover{ background:#2a4081 }
+    .chip{ border:1px solid #30467e; color:#bcd1ff; padding:.4rem .7rem; border-radius:999px; background:rgba(19,30,64,.6)}
+
+    /* coach + progress */
+    .coach .bar{ height:10px; background:#1f2937; border:1px solid #3a4b72; border-radius:999px; overflow:hidden }
+    .coach .bar>span{ display:block; height:100%; width:0%; background:linear-gradient(90deg,#22c55e,#16a34a) }
+    .coach .bar.warn>span{ background:linear-gradient(90deg,#f59e0b,#eab308) }
+    .coach .bar.danger>span{ background:linear-gradient(90deg,#ef4444,#dc2626) }
+    .tag{ font-size:.72rem; padding:.15rem .5rem; border-radius:7px; border:1px solid #3a4b72; color:#cfe1ff }
+    .tag.ok{ background:rgba(34,197,94,.14); border-color:#2ac26e; color:#bff3ce }
+    .tag.attn{ background:rgba(245,158,11,.16); border-color:#d9a624; color:#fde68a }
+
+    /* tooltips éducatives */
+    .help{ display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; margin-left:6px;
+      font-size:12px; border-radius:50%; background:#334155; color:#fff; cursor:pointer }
+    .tooltip{ position:absolute; z-index:50; min-width:230px; max-width:320px; display:none;
+      background:#0b1220; color:#e2e8f0; border:1px solid #334155; border-radius:10px; padding:10px 12px;
+      box-shadow:0 14px 32px rgba(0,0,0,.45) }
+    .tooltip strong{ color:#93c5fd }
+  </style>
+</head>
+<body>
+  <div class="app-wrap max-w-6xl mx-auto px-4 py-6 waves">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-4">
+      <div class="font-extrabold text-[1.35rem]">Budget – Courses & Fixe</div>
+      <div class="flex gap-2">
+        <button class="btn" id="tab-courses">🍎 Courses</button>
+        <button class="btn" id="tab-fixe">🧾 Dépenses fixes</button>
+        <button class="btn" id="btn-export">📤 Export</button>
+        <label class="btn cursor-pointer">
+          📥 Import
+          <input id="file-import" type="file" accept=".json,.csv" class="hidden" />
+        </label>
+      </div>
+    </div>
+
+    <!-- Infos -->
+    <div class="flex flex-wrap gap-2 mb-4">
+      <span class="chip">Données localStorage</span>
+      <span class="chip">PWA possible</span>
+    </div>
+
+    <!-- PAGE COURSES -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5" id="page-courses">
+      <!-- Col gauche -->
+      <section class="card p-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="relative">
+            <label class="block text-sm muted mb-1">Mois</label>
+            <input id="moisSelect" type="month" class="w-full card p-2 bg-transparent" />
+          </div>
+          <div class="relative">
+            <label class="block text-sm muted mb-1">Budget du mois (€)
+              <button class="help" data-tip="tip-budget">?</button>
+            </label>
+            <input id="budgetMois" type="number" class="w-full card p-2 bg-transparent" placeholder="300" />
+            <div id="tip-budget" class="tooltip">
+              <strong>Budget Courses</strong> : montant cible à ne pas dépasser pour tes courses ce mois-ci.
+            </div>
+          </div>
+        </div>
+
+        <!-- KPIs -->
+        <div class="grid grid-cols-3 gap-3 mt-3">
+          <div class="kpi"><div class="muted text-xs">Budget</div><div class="val" id="kpi-budget">0 €</div></div>
+          <div class="kpi"><div class="muted text-xs">Dépensé</div><div class="val" id="kpi-depense">0 €</div></div>
+          <div class="kpi"><div class="muted text-xs">Restant</div><div class="val" id="kpi-restant">0 €</div></div>
+        </div>
+
+        <div class="muted mt-2 text-sm" id="kpi-legend">Il reste 0 € sur 0 €.</div>
+
+        <!-- Ajouter un ticket -->
+        <div class="mt-5">
+          <div class="text-sm muted mb-2">Ajouter un ticket</div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="relative md:col-span-1">
+              <label class="block text-xs muted mb-1">Montant (€)
+                <button class="help" data-tip="tip-ticket">?</button>
+              </label>
+              <input id="courseAmount" type="number" step="0.01" class="w-full card p-2 bg-transparent" placeholder="35.60" />
+              <div id="tip-ticket" class="tooltip">
+                <strong>Ticket</strong> = un achat. Inscris le montant payé TTC.
+              </div>
+            </div>
+            <div class="relative md:col-span-1">
+              <label class="block text-xs muted mb-1">Libellé (optionnel)</label>
+              <input id="courseLabel" type="text" class="w-full card p-2 bg-transparent" placeholder="Ex: Carrefour, fruits…" />
+            </div>
+            <div class="relative md:col-span-1">
+              <label class="block text-xs muted mb-1">Date</label>
+              <input id="courseDate" type="date" class="w-full card p-2 bg-transparent" />
+            </div>
+          </div>
+          <div class="mt-3 flex gap-2">
+            <button id="btn-add-ticket" class="btn">➕ Ajouter</button>
+            <button id="btn-reset-month" class="btn">🔁 Réinitialiser le mois</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Col droite : Liste + Coach -->
+      <section class="flex flex-col gap-5">
+        <div class="card p-4">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-sm muted">Dépenses du mois</div>
+            <div class="text-sm muted"><span id="countTickets">0</span> élément(s)</div>
+          </div>
+          <ul id="ticketsList" class="space-y-2 text-sm"></ul>
+          <div class="muted text-xs mt-2">✏️ pour modifier, ✖️ pour supprimer. Données uniquement sur cet appareil (localStorage).</div>
+        </div>
+
+        <!-- Coach éducatif -->
+        <div class="card p-4 coach">
+          <div class="flex items-center justify-between">
+            <div class="font-semibold">Coach Budget</div>
+            <span id="coachTag" class="tag">—</span>
+          </div>
+          <div class="mt-2 text-sm">
+            <div class="flex justify-between"><span>Dépensé</span><strong id="c-depense">0 €</strong></div>
+            <div class="flex justify-between"><span>Budget</span><strong id="c-budget">0 €</strong></div>
+          </div>
+          <div class="bar mt-2" id="c-bar"><span></span></div>
+          <div class="muted text-xs mt-1" id="c-msg">Entre 0% et 50% : parfait, tu es large.</div>
+
+          <div class="mt-3 text-sm">
+            <div class="flex justify-between"><span>Revenus du mois</span><strong id="c-revenus">0 €</strong></div>
+            <div class="flex items-center justify-between">
+              <span>Objectif d’épargne</span>
+              <div class="flex items-center gap-2">
+                <strong id="c-epargne">0 €</strong>
+                <span class="tag" id="c-epargne-tag">—</span>
+              </div>
+            </div>
+          </div>
+          <div class="muted text-xs mt-2" id="c-note">Repères 50/30/20 affichés dans l’onglet Dépenses fixes.</div>
+        </div>
+      </section>
+    </div>
+
+    <!-- PAGE FIXE -->
+    <div class="grid grid-cols-1 gap-5" id="page-fixe" style="display:none">
+      <section class="card p-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="relative">
+            <label class="block text-sm muted mb-1">Mois</label>
+            <input id="moisFixe" type="month" class="w-full card p-2 bg-transparent"/>
+          </div>
+          <div class="relative">
+            <label class="block text-sm muted mb-1">
+              Revenus du mois (€)
+              <button class="help" data-tip="tip-revenus">?</button>
+            </label>
+            <input id="revenusInput" type="number" class="w-full card p-2 bg-transparent" placeholder="2000"/>
+            <div id="tip-revenus" class="tooltip"><strong>Revenus</strong> nets après impôts, aides incluses.</div>
+          </div>
+          <div class="relative">
+            <label class="block text-sm muted mb-1">
+              Objectif d’épargne (€)
+              <button class="help" data-tip="tip-epargne">?</button>
+            </label>
+            <input id="epargneInput" type="number" class="w-full card p-2 bg-transparent" placeholder="Ex: 300–400"/>
+            <div id="tip-epargne" class="tooltip"><strong>Astuce :</strong> vise 10–20% des revenus. Ajuste selon tes projets.</div>
+          </div>
+        </div>
+        <div class="mt-3 flex gap-2">
+          <button class="btn" id="btn-save-fixe">💾 Enregistrer</button>
+          <button class="btn" id="btn-reset-fixe">🔁 Réinitialiser le mois</button>
+        </div>
+
+        <!-- KPIs fixes -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+          <div class="kpi"><div class="muted text-xs">Revenus</div><div class="val" id="fx-revenus">0 €</div></div>
+          <div class="kpi"><div class="muted text-xs">Objectif épargne</div><div class="val" id="fx-epargne">0 €</div></div>
+          <div class="kpi"><div class="muted text-xs">Reste après épargne</div><div class="val" id="fx-reste">0 €</div></div>
+        </div>
+
+        <!-- Repères 50/30/20 -->
+        <div class="mt-4 card p-3">
+          <div class="muted text-sm mb-2">Repères 50/30/20 (à titre indicatif)</div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="kpi"><div class="muted text-xs">Essentiels (≈50%)</div><div class="val" id="fx-essentiels">0 €</div></div>
+            <div class="kpi"><div class="muted text-xs">Plaisir (≈30%)</div><div class="val" id="fx-plaisir">0 €</div></div>
+            <div class="kpi"><div class="muted text-xs">Épargne (≈20%)</div><div class="val" id="fx-ep20">0 €</div></div>
+          </div>
+        </div>
+
+        <!-- ===== Dépenses fixes (ajout + liste) ===== -->
+        <div class="mt-5 card p-4">
+          <div class="text-sm muted mb-2">Dépenses fixes</div>
+
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div>
+              <label class="block text-xs muted mb-1">Libellé</label>
+              <input id="fx-label" class="w-full card p-2 bg-transparent" placeholder="Loyer, Assurance auto, Netflix..." />
+            </div>
+            <div>
+              <label class="block text-xs muted mb-1">Catégorie</label>
+              <select id="fx-cat" class="w-full card p-2 bg-transparent">
+                <option>Loyer</option>
+                <option>Assurance</option>
+                <option>Abonnements</option>
+                <option>Transports</option>
+                <option>Énergie</option>
+                <option>Autres</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs muted mb-1">Montant (€)</label>
+              <input id="fx-amount" type="number" step="0.01" class="w-full card p-2 bg-transparent" placeholder="0,00" />
+            </div>
+            <div class="flex items-end">
+              <button id="fx-add" class="btn w-full">➕ Ajouter</button>
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <div class="flex items-center justify-between mb-2">
+              <div class="muted text-sm">Lignes</div>
+              <div class="muted text-sm"><span id="fx-count">0</span> élément(s)</div>
+            </div>
+            <ul id="fx-list" class="space-y-2 text-sm"></ul>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+            <div class="kpi"><div class="muted text-xs">Dépenses fixes</div><div class="val" id="fx-total">0 €</div></div>
+            <div class="kpi"><div class="muted text-xs">Reste après dépenses</div><div class="val" id="fx-reste-apres-dep">0 €</div></div>
+            <div class="kpi">
+              <div class="muted text-xs">État</div>
+              <div class="val"><span id="fx-etat" class="tag">—</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="mt-4 muted text-xs">
+      Tout est stocké en local (localStorage). Export/Import pour sauvegarder. PWA installable (manifest + service worker).
+    </div>
+  </div>
+
+  <script>
+    /* ---------- helpers ---------- */
+    const nf = new Intl.NumberFormat('fr-FR', { style:'currency', currency:'EUR' });
+    const clamp2 = (v)=> Math.round(Number(v||0)*100)/100;
+    const n = (v)=>{ v=String(v??'').replace(',','.'); const x=Number(v); return Number.isFinite(x)?x:0; }
+
+    const $ = s => document.querySelector(s);
+    const LS = {
+      read(k, def){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):def }catch{ return def }},
+      write(k, v){ localStorage.setItem(k, JSON.stringify(v)) }
+    };
+
+    /* ---------- Tooltips ---------- */
+    document.addEventListener('click', (e)=>{
+      const btn = e.target.closest('.help');
+      document.querySelectorAll('.tooltip').forEach(t=> t.style.display='none');
+      if(btn){
+        const tip = document.getElementById(btn.dataset.tip);
+        if(tip){
+          tip.style.display='block';
+          tip.style.left = (btn.offsetLeft)+'px';
+          tip.style.top  = (btn.offsetTop+24)+'px';
+        }
+      }
+    });
+
+    /* ---------- Onglets ---------- */
+    const pageCourses = $('#page-courses');
+    const pageFixe = $('#page-fixe');
+    $('#tab-courses').onclick = ()=>{ pageCourses.style.display='grid'; pageFixe.style.display='none'; }
+    $('#tab-fixe').onclick    = ()=>{ pageCourses.style.display='none'; pageFixe.style.display='grid'; }
+
+    /* ---------- State ---------- */
+    const state = LS.read('budget_state_v2', {
+      mois: new Date().toISOString().slice(0,7),
+      budget: 300,
+      tickets: [],
+      revenus: 0,
+      epargne: 0,
+      fixes: []   // nouvelles dépenses fixes
+    });
+
+    /* ---------- Init champs ---------- */
+    $('#moisSelect').value = state.mois;
+    $('#moisFixe').value   = state.mois;
+    $('#budgetMois').value = state.budget;
+    $('#revenusInput').value = state.revenus || '';
+    $('#epargneInput').value = state.epargne || '';
+
+    /* ---------- Courses ---------- */
+    function renderCourses(){
+      const budget = n($('#budgetMois').value);
+      const depense = clamp2(state.tickets.reduce((s,t)=>s+n(t.amount),0));
+      const restant = clamp2(budget - depense);
+
+      $('#kpi-budget').textContent  = nf.format(budget);
+      $('#kpi-depense').textContent = nf.format(depense);
+      $('#kpi-restant').textContent = nf.format(Math.max(0,restant));
+      $('#kpi-legend').textContent  = `Il reste ${nf.format(Math.max(0,restant))} sur ${nf.format(budget)}.`;
+
+      // liste
+      const ul = $('#ticketsList'); ul.innerHTML='';
+      state.tickets.forEach((t,i)=>{
+        const li = document.createElement('li');
+        li.className='card p-2 flex items-center justify-between gap-2';
+        li.innerHTML = `
+          <div class="flex items-center gap-2">
+            <input class="card bg-transparent px-2 py-1 w-28" value="${String(t.amount)}" data-i="${i}" data-k="amount">
+            <input class="card bg-transparent px-2 py-1 w-44" value="${t.label||''}" data-i="${i}" data-k="label">
+            <input class="card bg-transparent px-2 py-1 w-36" type="date" value="${t.date||''}" data-i="${i}" data-k="date">
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="muted text-xs">${t.date? new Date(t.date).toLocaleDateString('fr-FR'): ''}</span>
+            <button class="text-red-300" data-del="${i}">✖️</button>
+          </div>`;
+        ul.appendChild(li);
+      });
+      $('#countTickets').textContent = state.tickets.length;
+
+      // edits
+      ul.querySelectorAll('input[data-i]').forEach(inp=>{
+        inp.onchange = ()=>{
+          const i = Number(inp.dataset.i);
+          const key = inp.dataset.k;
+          if(key==='amount') state.tickets[i].amount = String(clamp2(n(inp.value)));
+          else state.tickets[i][key] = inp.value;
+          persist(); renderCourses(); updateCoach();
+        };
+      });
+      ul.querySelectorAll('[data-del]').forEach(btn=>{
+        btn.onclick = ()=>{
+          const i = Number(btn.dataset.del);
+          state.tickets.splice(i,1); persist(); renderCourses(); updateCoach();
+        };
+      });
+
+      // coach (courses)
+      $('#c-depense').textContent = nf.format(depense);
+      $('#c-budget').textContent  = nf.format(budget);
+      const pct = budget>0 ? Math.min(100, Math.round(depense/budget*100)) : 0;
+      const bar = $('#c-bar'); const fill = bar.querySelector('span');
+      fill.style.width = pct+'%'; bar.classList.remove('warn','danger');
+      const msg = $('#c-msg');
+      const tag= $('#coachTag');
+      if(pct<50){ msg.textContent='Entre 0% et 50% : parfait, tu es large.'; tag.textContent='OK'; tag.className='tag ok'; }
+      else if(pct<80){ bar.classList.add('warn'); msg.textContent='50–80% : reste vigilant, ça passe.'; tag.textContent='Surveillance'; tag.className='tag attn'; }
+      else { bar.classList.add('danger'); msg.textContent='80–100% : attention au dérapage.'; tag.textContent='Risque'; tag.className='tag attn'; }
+    }
+
+    /* ---------- Dépenses fixes ---------- */
+    function renderFixesList(){
+      const ul = document.getElementById('fx-list');
+      ul.innerHTML = '';
+      state.fixes.forEach((f, i) => {
+        const li = document.createElement('li');
+        li.className = 'card p-2 flex items-center justify-between gap-2';
+        li.innerHTML = `
+          <div class="flex items-center gap-2">
+            <input class="card bg-transparent px-2 py-1 w-40" value="${f.label||''}" data-i="${i}" data-k="label">
+            <select class="card bg-transparent px-2 py-1 w-36" data-i="${i}" data-k="cat">
+              ${['Loyer','Assurance','Abonnements','Transports','Énergie','Autres']
+                 .map(opt => `<option ${opt===f.cat?'selected':''}>${opt}</option>`).join('')}
+            </select>
+            <input class="card bg-transparent px-2 py-1 w-28" value="${String(f.amount)}" data-i="${i}" data-k="amount">
+          </div>
+          <button class="text-red-300" data-del="${i}">✖️</button>
+        `;
+        ul.appendChild(li);
+      });
+      document.getElementById('fx-count').textContent = state.fixes.length;
+
+      // Édition
+      ul.querySelectorAll('input[data-i],select[data-i]').forEach(inp=>{
+        inp.onchange = ()=>{
+          const i = Number(inp.dataset.i), k = inp.dataset.k;
+          state.fixes[i][k] = (k==='amount') ? String(clamp2(n(inp.value))) : inp.value;
+          persist(); renderFixe();
+        };
+      });
+      // Suppression
+      ul.querySelectorAll('[data-del]').forEach(btn=>{
+        btn.onclick = ()=>{
+          const i = Number(btn.dataset.del);
+          state.fixes.splice(i,1); persist(); renderFixe();
+        };
+      });
+    }
+
+    function renderFixe(){
+      const revenus = n($('#revenusInput').value);
+      const epargne = n($('#epargneInput').value);
+      const reste   = clamp2(Math.max(0, revenus - epargne));
+
+      // Totaux fixes
+      const totalFixes = clamp2(state.fixes.reduce((s,f)=> s + n(f.amount), 0));
+      const resteApresDep = clamp2(Math.max(0, reste - totalFixes));
+
+      // KPIs existants
+      $('#fx-revenus').textContent = nf.format(revenus);
+      $('#fx-epargne').textContent = nf.format(epargne);
+      $('#fx-reste').textContent   = nf.format(reste);
+
+      // Repères 50/30/20
+      $('#fx-essentiels').textContent = nf.format(revenus*0.5);
+      $('#fx-plaisir').textContent    = nf.format(revenus*0.3);
+      $('#fx-ep20').textContent       = nf.format(revenus*0.2);
+
+      // Nouvelles valeurs fixes
+      $('#fx-total').textContent = nf.format(totalFixes);
+      $('#fx-reste-apres-dep').textContent = nf.format(resteApresDep);
+
+      const etat = $('#fx-etat'); etat.className = 'tag';
+      if (revenus === 0) { etat.textContent = '—'; }
+      else {
+        const ratio = totalFixes / revenus;
+        if (ratio <= .5) { etat.textContent='OK ✅'; etat.classList.add('ok'); }
+        else if (ratio <= .6) { etat.textContent='À surveiller'; etat.classList.add('attn'); }
+        else { etat.textContent='Trop élevé'; etat.classList.add('attn'); }
+      }
+
+      // Coach : revenus/épargne
+      $('#c-revenus').textContent = nf.format(revenus);
+      $('#c-epargne').textContent = nf.format(epargne);
+      const tag = $('#c-epargne-tag'); tag.className='tag';
+      if(revenus>0){
+        const r = (epargne/revenus)*100;
+        if(r>=10 && r<=25){ tag.classList.add('ok'); tag.textContent='Bon repère'; }
+        else if(r<10){ tag.classList.add('attn'); tag.textContent='Peut-être trop bas'; }
+        else { tag.classList.add('attn'); tag.textContent='Ambitieux'; }
+      } else { tag.textContent='—'; }
+
+      renderFixesList();
+    }
+
+    /* ---------- Handlers ---------- */
+    // Courses
+    $('#btn-add-ticket').onclick = ()=>{
+      const amt = clamp2(n($('#courseAmount').value));
+      if(!amt) return;
+      const lab = $('#courseLabel').value.trim();
+      const dt  = $('#courseDate').value || new Date().toISOString().slice(0,10);
+      state.tickets.unshift({ amount:String(amt), label:lab, date:dt });
+      $('#courseAmount').value=''; $('#courseLabel').value='';
+      persist(); renderCourses(); updateCoach();
+    };
+    $('#btn-reset-month').onclick = ()=>{
+      if(confirm('Réinitialiser les tickets de ce mois ?')){
+        state.tickets = []; persist(); renderCourses(); updateCoach();
+      }
+    };
+    $('#budgetMois').oninput = ()=>{ state.budget = n($('#budgetMois').value); persist(); renderCourses(); updateCoach(); }
+    $('#moisSelect').onchange = (e)=>{ state.mois = e.target.value; persist(); }
+
+    // Fixe
+    document.getElementById('fx-add').onclick = ()=>{
+      const label = document.getElementById('fx-label').value.trim();
+      const cat   = document.getElementById('fx-cat').value;
+      const amt   = clamp2(n(document.getElementById('fx-amount').value));
+      if(!label || !amt) return;
+      state.fixes.unshift({ label, cat, amount:String(amt) });
+      document.getElementById('fx-label').value='';
+      document.getElementById('fx-amount').value='';
+      persist(); renderFixe();
+    };
+    $('#btn-save-fixe').onclick = ()=>{
+      state.revenus = n($('#revenusInput').value);
+      state.epargne = n($('#epargneInput').value);
+      persist(); renderFixe(); updateCoach();
+    };
+    $('#btn-reset-fixe').onclick = ()=>{
+      if(confirm('Réinitialiser revenus + épargne ?')){
+        $('#revenusInput').value=''; $('#epargneInput').value='';
+        state.revenus=0; state.epargne=0; persist(); renderFixe(); updateCoach();
+      }
+    };
+    $('#moisFixe').onchange = (e)=>{ state.mois=e.target.value; persist(); }
+
+    function updateCoach(){ renderFixe(); renderCourses(); }
+    function persist(){ LS.write('budget_state_v2', state); }
+
+    /* ---------- Export / Import ---------- */
+    $('#btn-export').onclick = ()=>{
+      const data = JSON.stringify(state, null, 2);
+      const blob = new Blob([data], {type:'application/json'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'budget-data.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
+    $('#file-import').onchange = (e)=>{
+      const f = e.target.files?.[0]; if(!f) return;
+      const r = new FileReader();
+      r.onload = ()=>{
+        try{
+          const obj = JSON.parse(r.result);
+          Object.assign(state, obj);
+          $('#moisSelect').value = state.mois;
+          $('#moisFixe').value   = state.mois;
+          $('#budgetMois').value = state.budget;
+          $('#revenusInput').value = state.revenus||'';
+          $('#epargneInput').value = state.epargne||'';
+          persist(); updateCoach();
+        }catch{ alert('Fichier invalide'); }
+        e.target.value='';
+      };
+      r.readAsText(f, 'utf-8');
+    };
+
+    // premier rendu
+    renderFixe(); renderCourses();
+
+    /* ---------- PWA (enregistrement SW) ---------- */
+    if('serviceWorker' in navigator){
+      window.addEventListener('load', ()=> {
+        navigator.serviceWorker.register('./sw.js').catch(()=>{});
+      });
+    }
+  </script>
+</body>
+</html>
